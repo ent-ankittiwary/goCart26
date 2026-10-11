@@ -1,4 +1,6 @@
+import { prisma } from "@/lib/prisma";
 import { inngest } from "./client";
+
 
 //inngest function to save userData from Database
 
