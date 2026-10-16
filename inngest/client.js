@@ -1,4 +1,5 @@
 // src/inngest/client.ts
 import { Inngest } from "inngest";
 
-export const inngest = new Inngest({ id: "gocart" });
+const inngest = new Inngest({ id: "gocart" });
+export default inngest;
