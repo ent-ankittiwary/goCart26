@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { inngest } from "@/inngest/client";
 
 // Create coupon API
+
 export async function POST(request) {
   try {
     const { userId } = getAuth(request);
@@ -19,7 +20,7 @@ export async function POST(request) {
 
     const { coupon } = await request.json();
 
-    if (!coupon?.code) {
+    if (!coupon?.code?.trim()) {
       return NextResponse.json(
         { error: "Coupon code is required" },
         { status: 400 }
@@ -28,31 +29,58 @@ export async function POST(request) {
 
     coupon.code = coupon.code.trim().toUpperCase();
 
-    // Create coupon only once
+    // Create the coupon only once
     const newCoupon = await prisma.coupon.create({
       data: coupon,
     });
 
-    await inngest.send({
-      name: "app/coupon.expired",
-      data: {
-        code: newCoupon.code,
-        expires_at: newCoupon.expiresAt,
-      },
-    });
+    // Send expiry event separately
+    try {
+      await inngest.send({
+        name: "app/coupon.expired",
+        data: {
+          code: newCoupon.code,
+          expires_at: newCoupon.expiresAt,
+        },
+      });
+    } catch (inngestError) {
+      console.error("Inngest event failed:", inngestError);
 
-    return NextResponse.json({
-      message: "Coupon added successfully",
-    });
+      // Coupon is already saved in the database
+      return NextResponse.json(
+        {
+          message: "Coupon created, but expiry scheduling failed.",
+          coupon: newCoupon,
+          warning: "Check your Inngest Event Key and configuration.",
+        },
+        { status: 201 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        message: "Coupon added successfully",
+        coupon: newCoupon,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Create coupon error:", error);
 
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "This coupon code already exists. Please use another code." },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
-      { error: error.code || error.message },
+      { error: error.message || "Failed to create coupon" },
       { status: 400 }
     );
   }
 }
+
 
 // Delete coupon API
 export async function DELETE(request) {
